@@ -22,14 +22,23 @@ if !ENV.key?( 'TRUSTED_NODE_DATA' )
   ENV['TRUSTED_NODE_DATA']='yes'
 end
 
+
+if ENV['PUPPET_DEBUG']
+  Puppet::Util::Log.level = :debug
+  Puppet::Util::Log.newdestination(:console)
+end
+
+
 default_hiera_config =<<-EOM
 ---
 :backends:
+  - "rspec"
   - "yaml"
 :yaml:
   :datadir: "stub"
 :hierarchy:
   - "%{custom_hiera}"
+  - "%{spec_title}"
   - "%{module_name}"
   - "default"
 EOM
@@ -45,7 +54,7 @@ EOM
 # end
 #
 def set_environment(environment = :production)
-  RSpec.configure { |c| c.default_facts['environment'] = environment.to_s }
+    RSpec.configure { |c| c.default_facts['environment'] = environment.to_s }
 end
 
 # This can be used from inside your spec tests to load custom hieradata within
@@ -67,7 +76,7 @@ end
 #
 # Note: Any colons (:) are replaced with underscores (_) in the class name.
 def set_hieradata(hieradata)
-  RSpec.configure { |c| c.default_facts['custom_hiera'] = hieradata }
+    RSpec.configure { |c| c.default_facts['custom_hiera'] = hieradata }
 end
 
 if not File.directory?(File.join(fixture_path,'hieradata')) then
@@ -142,9 +151,6 @@ RSpec.configure do |c|
     # clean up the mocked environmentpath
     FileUtils.rm_rf(@spec_global_env_temp)
     @spec_global_env_temp = nil
-  end
-  c.after(:suite) do
-#    RSpec::Puppet::Coverage.report!(100)
   end
 end
 

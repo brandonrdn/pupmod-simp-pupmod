@@ -1,3 +1,98 @@
+* Thu Jul 12 2018 Trevor Vaughan <tvaughan@onyxpoint.com> - 7.6.1-0
+- Fixed the new `simp_generate_types` script to ensure that the permissions on
+  the created directory are correctly set.
+
+* Thu Jun 14 2018 Nick Miller <nick.miller@onyxpoint.com> - 7.6.1-0
+- Cleanup unneeded fixtures and update CI assets
+- Remove unused simp/tcpwrappers and simp/logrotate dependencies
+
+* Fri May 04 2018 Trevor Vaughan <tvaughan@onyxpoint.com> - 7.6.0-0
+- Changed some 'validate_re' statements to 'assert_type' to remove deprecation
+  warnings
+- Added 'pupmod::master::generate_types' (enabled by default) which:
+  - Adds a script, /usr/local/sbin/simp_generate_types that will run 'puppet
+    generate types' either on all environments (when first distributed by
+    Puppet) or per environment
+  - Adds incron hooks to run 'simp_generate_types' when Ruby files in any
+    puppet type have been updated
+  - Adds incron hooks to run 'simp_generate_types' on any new environment
+  - Adds incron hooks to run 'simp_generate_types' on *all* environments if the
+    puppetserver binary is updated
+  - All errors are logged to syslog
+
+* Tue Apr 17 2018 Jeanne Greulich <jeanne.greulich@onyxpoint.com> - 7.6.0-0
+- Added line in puppet cron to shutdown/disable puppet client service.
+- Added check in agent/cron manifest to disable and stop puppet client service
+  so it would not run multiple times on newly kickstarted systems.
+
+* Mon Mar 19 2018 Lucas Yamanishi <lucas.yamanishi@onyxpoint.com> - 7.5.0-0
+- Fix service name and related resources on Puppet Enterprise (PE)
+  - Fix `$tmpdir` setting on PE
+  - Fix Puppetserver service management on PE
+
+* Tue Mar 06 2018 Nick Miller <nick.miller@onyxpoint.com> - 7.5.0-0
+- pupmod::master::simp_auth
+  - Allow tweaking `allow` and `deny` rules for supported keydist auth rules
+  - Removed Mcollective auth rules
+  - Deprecated `$legacy_cacerts_all` and `$legacy_pki_keytabs_from_host`
+
+* Fri Mar 02 2018 Trevor Vaughan <tvaughan@onyxpoint.com> - 7.5.0-0
+- Updated to support Puppet 5
+  - Fixed issues with the puppetserver configuration that could have broken
+    Puppet 5 system configurations
+  - Updated to support new server options
+- Fixed issues with autosign and fileserver.conf defined types generating
+  incorrect files
+- Updated all puppet strings documentation
+- Converted all templates to EPP
+- Added process limits on the number of JRuby instances started designed to not
+  overload the server in terms of either processor power or memory capabilities
+- Added OracleLinux support
+
+* Fri Feb 09 2018 Liz Nemsick <lnemsick.simp@gmail.com> - 7.5.0-0
+- Add the missing puppetlabs/inifile dependency to the metadata.json
+- Fixed puppet-lint problem
+
+* Mon Oct 02 2017 Chris Tessmer <chris.tessmer@onyxpoint.com> - 7.4.1-0
+- Fixed bug where `:selinux_config_mode` is tested even when `:selinux` is
+  false.
+
+* Mon Sep 11 2017 Liz Nemsick <lnemsick.simp@gmail.com> - 7.4.0-0
+- Add SHA256-based option to generate the minute parameter for
+  a client's puppet agent cron from its IP address. This option
+  is intended mitigate the undesirable clustering of client puppet
+  agent runs, when the number of IPs to be transformed is less
+  than the minute range over which the randomization is requested
+  (60) and/or the client IPs are not linearly assigned.
+
+* Tue Aug 01 2017 Liz Nemsick <lnemsick.simp@gmail.com> - 7.4.0-0
+- Ensure OBE 'puppet_crl_pull' cron job from pupmod versions prior
+  to 7.3.1 is removed.
+
+* Thu Jul 27 2017 Nick Markowski <nmarkowski@keywcorp.com> - 7.4.0-0
+- README updates:
+  - Informed users of legacy auth.conf deprecation
+  - Provided instructions to reproduce custom auth.conf entries
+    in puppet
+
+* Thu Jun 22 2017 Jeanne Greulich <jeanne.greulich@onyxpoint.com> - 7.3.1-0
+- fixed the path to the pki_files and krb_files in the auth.conf
+  so remote systems could download files.
+- Update puppet requirement in metadata.json
+
+* Wed Jun 14 2017 Nick Miller <nick.miller@onyxpoint.com> - 7.3.1-0
+- Removed Puppet CRL download, the puppet agent now checks for the expiration of
+  the cert automatically
+
+* Mon Jun 05 2017 Nick Markowski <nmarkowski@keywcorp.com> - 7.3.1-0
+- Ensure legacy auth.conf is backed up before removing it. This is a
+  follow up to SIMP-3049 based on feedback to SIMP-3196.
+
+* Mon May 22 2017 Kendall Moore <kendall.moore@onyxpoint.com> 7.3.1-0
+- Added manifest to manage simp-specific puppet master auth requirements
+- Disabled puppetserver setting to enable legacy auth.conf by default
+- Remove legacy auth.conf placed by the `puppet-agent` package
+
 * Fri May 19 2017 Nick Miller <nick.miller@onyxpoint.com> - 7.3.1-0
 - Removed deprecated `audit` metaparameter
 

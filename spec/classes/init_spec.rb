@@ -23,10 +23,6 @@ describe 'pupmod' do
             it { is_expected.to compile.with_all_deps }
             it { is_expected.not_to contain_class('haveged') }
             it { is_expected.to contain_package('puppet-agent').with_ensure('installed') }
-            it { is_expected.to contain_cron('puppet_crl_pull').with_command(
-              "/usr/bin/curl -sS --cert /etc/puppetlabs/puppet/ssl/certs/foo.example.com.pem --key /etc/puppetlabs/puppet/ssl/private_keys/foo.example.com.pem -k -o /etc/puppetlabs/puppet/ssl/crl.pem -H \"Accept: s\" https://1.2.3.4:8141/puppet-ca/v1/certificate_revocation_list/ca\n") }
-
-            it { is_expected.to contain_cron('puppet_crl_pull').with_user('root') }
             it { is_expected.to contain_class('pupmod::agent::cron') }
             it { is_expected.to contain_pupmod__conf('agent_daemonize').with({
               'section' => 'agent',
@@ -46,12 +42,12 @@ describe 'pupmod' do
 
             it { is_expected.to contain_pupmod__conf('srv_domain').with({
               'setting' => 'srv_domain',
-              'value' => 'example.com'
+              'value' => facts[:domain]
             }) }
 
             it { is_expected.to contain_pupmod__conf('certname').with({
               'setting' => 'certname',
-              'value' => 'foo.example.com'
+              'value' => facts[:fqdn]
             }) }
 
             it { is_expected.to contain_pupmod__conf('vardir').with({
@@ -145,10 +141,12 @@ describe 'pupmod' do
                 is_expected.to contain_selboolean('puppetagent_manage_all_files')
               end
             end
+
+            it { is_expected.to contain_cron('puppet_crl_pull').with_ensure('absent') }
+
             context 'with_selinux_disabled' do
               let(:facts) {
                 _facts = @extras.merge(os_facts)
-                _facts[:selinux_current_mode] = 'disabled'
                 _facts[:selinux] = false
 
                 _facts

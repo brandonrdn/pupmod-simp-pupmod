@@ -22,10 +22,7 @@
 #   we are using PC1 or PE
 #
 # @param ca_crl_pull_interval
-#   How many times per day to pull the CRL down from the CA via cron.
-#
-#   This uses ip_to_cron to randomize the pull interval so that the CA doesn't
-#   get swarmed.
+#   NOTE: This parameter is deprecated and throws a warning if specified.
 #
 # @param certname
 #   The puppet environment name of the system.
@@ -52,8 +49,14 @@
 #   consumed resources can be freed for other uses and so that the cron
 #   job can maintain a safe system state over time.
 #
+# @param digest_algorithm
+#   The hash Digest to use for file operations on the system.
+#
 # @param enable_puppet_master
 #   Whether or not to make the system a puppetmaster.
+#
+# @param environmentpath
+#   The path to the directory holding the puppet environments.
 #
 # @param listen
 #   Whether or not to listen for incoming connections to the puppet
@@ -138,9 +141,9 @@ class pupmod (
   Simplib::Port                          $ca_port              = simplib::lookup('simp_options::puppet::ca_port', { 'default_value' => 8141 }),
   Simplib::Host                          $puppet_server        = simplib::lookup('simp_options::puppet::server', { 'default_value' => "puppet.${facts['domain']}" }),
   Simplib::ServerDistribution            $server_distribution  = simplib::lookup('simp_options::puppet::server_distribution', { 'default_value' => 'PC1' } ),
-  Integer                                $ca_crl_pull_interval = 2,
+  Optional                               $ca_crl_pull_interval = undef,
   Simplib::Host                          $certname             = $facts['fqdn'],
-  String                                 $classfile            = '$vardir/classes.txt',
+  String[0]                              $classfile            = '$vardir/classes.txt',
   Stdlib::AbsolutePath                   $confdir              = $::pupmod::params::puppet_config['confdir'],
   Boolean                                $daemonize            = false,
   Enum['md5','sha256']                   $digest_algorithm     = 'sha256',
@@ -151,9 +154,9 @@ class pupmod (
   Simplib::Port                          $masterport           = 8140,
   Boolean                                $report               = false,
   Stdlib::AbsolutePath                   $rundir               = $::pupmod::params::puppet_config['rundir'],
-  Integer                                $runinterval          = 1800,
+  Integer[0]                             $runinterval          = 1800,
   Boolean                                $splay                = false,
-  Optional[Integer]                      $splaylimit           = undef,
+  Optional[Integer[1]]                   $splaylimit           = undef,
   Simplib::Host                          $srv_domain           = $facts['domain'],
   Stdlib::AbsolutePath                   $ssldir               = $::pupmod::params::puppet_config['ssldir'],
   Simplib::Syslog::Facility              $syslogfacility       = 'local6',
@@ -163,36 +166,30 @@ class pupmod (
   Boolean                                $fips                 = simplib::lookup('simp_options::fips', { 'default_value' => false }),
   Boolean                                $firewall             = simplib::lookup('simp_options::firewall', { 'default_value' => false }),
   Hash                                   $pe_classlist         = {},
-  String                                 $package_ensure       = simplib::lookup('simp_options::package_ensure' , { 'default_value' => 'installed'}),
+  String[1]                              $package_ensure       = simplib::lookup('simp_options::package_ensure' , { 'default_value' => 'installed'}),
   Boolean                                $mock                 = false
 ) inherits pupmod::params {
   unless ($mock == true) {
-    # These regexes match absolute paths or paths that begin with an existing
+    simplib::assert_metadata($module_name)
+
+    # This regex matches absolute paths or paths that begin with an existing
     # puppet configuration variable, like $vardir
-    validate_re($classfile,'^(\$(?!/)|/).+')
-    validate_re($confdir,'^(\$(?!/)|/).+')
-    validate_re($environmentpath,'^(\$(?!/)|/).+')
-    validate_re($logdir,'^(\$(?!/)|/).+')
-    validate_re($rundir,'^(\$(?!/)|/).+')
+
+    assert_type(Pattern['^(\$(?!/)|/).+'], $classfile)
+
+    if $ca_crl_pull_interval {
+      deprecation('pupmod::ca_crl_pull_interval', 'pupmod::ca_crl_pull_interval is deprecated, the CRL cron job has been removed.')
+    }
 
     if $haveged {
       include '::haveged'
     }
-
-    $l_crl_pull_minute = ip_to_cron(1)
-    $l_crl_pull_hour = ip_to_cron($ca_crl_pull_interval,24)
 
     if $enable_puppet_master {
       include 'pupmod::master'
     }
     package { 'puppet-agent': ensure => $package_ensure }
 
-    cron { 'puppet_crl_pull':
-      command => template('pupmod/commands/crl_download.erb'),
-      user    => 'root',
-      minute  => ip_to_cron(1),
-      hour    => ip_to_cron($ca_crl_pull_interval,24)
-    }
     if $daemonize {
       cron { 'puppetagent': ensure => 'absent' }
 
@@ -246,18 +243,174 @@ class pupmod (
     # Disgusting? yes. Necessary? unfortunately. This will have to be re-evaluated
     # for every major puppet release.
 
-    @pupmod::pass_two { 'main':
-      server_distribution => $server_distribution,
-      confdir             => $confdir,
-      firewall            => $firewall,
-      pe_classlist        => $pe_classlist,
-      pupmod_server       => $puppet_server,
-      pupmod_ca_server    => $ca_server,
-      pupmod_masterport   => $masterport,
-      pupmod_ca_port      => $ca_port,
-      pupmod_report       => $report,
+    if (defined(Class['puppet_enterprise'])) {
+      $_server_distribution = 'PE'
+    } else {
+      $_server_distribution = $server_distribution
     }
-    Pupmod::Pass_two <| |>
+
+    # These are agent specific variables, that only apply on Puppet 4+ systems:
+
+    if ($_server_distribution == 'PC1') {
+      pupmod::conf { 'server':
+        confdir => $confdir,
+        setting => 'server',
+        value   => $pupmod_server,
+      }
+
+      pupmod::conf { 'ca_server':
+        confdir => $confdir,
+        setting => 'ca_server',
+        value   => $pupmod_ca_server,
+      }
+
+      pupmod::conf { 'masterport':
+        confdir => $confdir,
+        setting => 'masterport',
+        value   => $pupmod_masterport,
+      }
+
+      pupmod::conf { 'ca_port':
+        confdir => $confdir,
+        setting => 'ca_port',
+        value   => $pupmod_ca_port,
+
+      }
+      pupmod::conf { 'report':
+        section => 'agent',
+        confdir => $confdir,
+        setting => 'report',
+        value   => $pupmod_report,
+      }
+    }
+
+    $_conf_group = 'puppet'
+
+    # These two maps allow the user and service specifications to occur purely in
+    # data and can be included /only/ if the node is classified into the
+    # applicable groups.  this is necessary as a LEI install of PE has several
+    # separate, independent roles that can be applied, not just master|agent.
+    #
+    # This also prevents us from passing the burden onto the user to classify
+    # their nodes with two classes, one for SIMP, and one for PE.
+    #
+    # For safety that means that releases of SIMP are only supported on specified
+    # PE releases. We need to have a matrix of supported versions.
+    if ($_server_distribution == 'PE') {
+      $available = $pe_classlist.map |$class, $data| {
+        if (defined(Class[$class])) {
+          $data['users']
+        }
+      }
+
+      $notify_resources = $pe_classlist.map |$class, $data| {
+        if (defined(Class[$class])) {
+          if ($data['services'] != undef) {
+            # lint:ignore:variable_scope
+            $data['services'].map |$service| { Service[$service] }
+            # lint:endignore
+          }
+        }
+      }
+      $_group_notify = unique(flatten(delete_undef_values($notify_resources)))
+      $_group_members = unique(flatten(delete_undef_values($available)))
+    }
+    else {
+      $_group_notify = undef
+      $_group_members = undef
+    }
+
+    # All of those functions are required to make this 'safe' and
+    # idempotent.
+    group { $_conf_group:
+      ensure    => 'present',
+      allowdupe => false,
+      gid       => '52',
+      tag       => 'firstrun',
+      notify    => $_group_notify,
+      members   => $_group_members,
+    }
+
+    # We cannot assume that every user is going to read the SIMP docs before they
+    # attempt to classify a class, and we also cannot assume they know what would
+    # happen if ``pupmod::master`` and ``puppet_enterprise::profile::master`` are
+    # applied at the same time.
+    #
+    # Hell, I don't even know what would happen. But it would be bad
+    # Very, very bad.
+    if (defined(Class['puppet_enterprise::profile::master'])) {
+      if (defined(Class['pupmod::master'])) {
+        fail('pupmod::master is NOT supported on PE masters. Please remove the pupmod::master classification from hiera or the puppet console before proceeding')
+      } else {
+        class { 'pupmod::master::sysconfig':
+          server_distribution => 'PE',
+          service             => 'pe-puppetserver',
+          user                => 'pe-puppet',
+        }
+      }
+    }
+    if (defined(Class['pupmod::master'])) {
+      class { 'pupmod::master::simp_auth':
+        server_distribution => $_server_distribution
+      }
+    }
+
+    if ($_server_distribution == 'PC1') {
+      $shared_mode = '0640'
+    } elsif ($_server_distribution == 'PE') {
+      $shared_mode = undef
+    }
+    file { $confdir:
+      ensure => 'directory',
+      owner  => 'root',
+      group  => $_conf_group,
+      mode   => $shared_mode
+    }
+
+    file { "${confdir}/puppet.conf":
+      ensure => 'file',
+      owner  => 'root',
+      group  => $_conf_group,
+      mode   => $shared_mode
+    }
+
+    if ($_server_distribution == 'PE') {
+      $pe_classlist.each |String $class, Hash $data| {
+        if (defined(Class[$class])) {
+          if ($data['configure_access'] == true) {
+            pam::access::rule { "Add rule for ${class}": users => $data['users'], origins => ['ALL'], comment =>  'fix for init scripts that use su' }
+          }
+        }
+      }
+    }
+
+    # Generate firewall rules on a per-class basis.  Basically, only when a node
+    # is classified with a role will we poke a hole in the firewall for it
+    #
+    # Only create TCP rules since that's all puppet uses. But support it in the
+    # data model anyway
+    if ($firewall) {
+      if ($_server_distribution == 'PE') {
+        $pe_classlist.each |String $class, Hash $data| {
+          if (defined(Class[$class])) {
+            $rules = $data['firewall_rules']
+            if ($rules != undef) {
+              $rules.each |Hash $data| {
+                case ($data['proto']) {
+                  'tcp' : {
+                    iptables::listen::tcp_stateful { "${class} - ${data['proto']} - ${data['port']}":
+                      dports => $data['port'],
+                    }
+                  }
+                  default: {
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
 
     pupmod::conf { 'splay':
       confdir => $confdir,
@@ -356,18 +509,23 @@ class pupmod (
     }
 
     # Changing SELinux booleans on a minor update is a horrible idea.
-    if ( $::operatingsystem in ['RedHat','CentOS'] ) and ( $::operatingsystemmajrelease < '7' ) {
+    if ( $facts['operatingsystem'] in ['RedHat','CentOS','OracleLinux'] ) and ( $facts['operatingsystemmajrelease'] < '7' ) {
       $puppet_agent_sebool = 'puppet_manage_all_files'
     }
     else {
       $puppet_agent_sebool = 'puppetagent_manage_all_files'
     }
-    if $::selinux_current_mode and $::selinux_current_mode != 'disabled' {
+    if $facts['selinux'] and $facts['selinux_current_mode'] and ($facts['selinux_current_mode'] != 'disabled') {
       selboolean { $puppet_agent_sebool :
         persistent => true,
         value      => 'on'
       }
     }
   }
+
+  # Make sure OBE cron job from pupmod versions prior to 7.3.1 is removed.
+  # This resource can be removed when the OBE ca_crl_pull_interval
+  # parameter is removed.
+  cron { 'puppet_crl_pull': ensure => 'absent' }
 }
 # vim: set expandtab ts=2 sw=2:
